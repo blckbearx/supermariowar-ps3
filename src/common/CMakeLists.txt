@@ -73,6 +73,7 @@ add_library(CommonFiles STATIC
     util/DirIterator.h
     util/SdlHelpers.cpp
     util/SdlHelpers.h
+    ps3_std_filesystem_stubs.cpp
 )
 
 add_subdirectory(ui)
@@ -84,9 +85,16 @@ endif()
 
 
 if(NOT EMSCRIPTEN)
-    target_link_libraries(CommonFiles
-        SDL2::SDL2
-        SDL2_image::SDL2_image
-        SDL2_mixer::SDL2_mixer
-    )
+    if(PS3_BUILD)
+        add_library(PS3_SDL2 INTERFACE)
+        target_compile_options(PS3_SDL2 INTERFACE ${PS3_SDL2_CFLAGS_LIST})
+        target_link_libraries(PS3_SDL2 INTERFACE ${PS3_SDL2_LDFLAGS_LIST})
+        target_link_libraries(CommonFiles PUBLIC PS3_SDL2)
+    else()
+        target_link_libraries(CommonFiles
+            SDL2::SDL2
+            SDL2_image::SDL2_image
+            SDL2_mixer::SDL2_mixer
+        )
+    endif()
 endif()

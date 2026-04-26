@@ -14,6 +14,8 @@
 // main game directory, read from command line argument
 #ifdef __ANDROID__
 std::string RootDataDirectory = GetHomeDirectory() + "data";
+#elif defined(PS3_BUILD)
+std::string RootDataDirectory = "/dev_hdd0/game/SMW00PS33/USRDIR/data";
 #else
 std::string RootDataDirectory = GetRootDirectory() + "data";
 #endif

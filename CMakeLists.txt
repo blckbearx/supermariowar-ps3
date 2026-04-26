@@ -6,6 +6,24 @@
 
 cmake_minimum_required(VERSION 3.24)
 
+option(PS3_BUILD "Build for PlayStation 3 using SDL2 cross-toolchain" OFF)
+set(PS3_SDL2_CONFIG "sdl2-config" CACHE FILEPATH "SDL2 config script for PlayStation 3")
+set(PS3_SDL2_EXTRA_LIBS "-lSDL2_image -lSDL2_mixer -lSDL2_ttf" CACHE STRING "Additional PS3 SDL2-related libraries")
+
+if(PS3_BUILD)
+	set(CMAKE_SYSTEM_NAME "PS3" CACHE STRING "Target system name for PlayStation 3" FORCE)
+	set(CMAKE_SYSTEM_PROCESSOR "powerpc" CACHE STRING "Target processor for PlayStation 3" FORCE)
+	set(CMAKE_C_COMPILER "ppu-gcc" CACHE FILEPATH "PS3 C compiler" FORCE)
+	set(CMAKE_CXX_COMPILER "ppu-g++" CACHE FILEPATH "PS3 C++ compiler" FORCE)
+	set(CMAKE_C_STANDARD 99 CACHE STRING "C standard for PS3 build" FORCE)
+	set(CMAKE_C_STANDARD_REQUIRED ON CACHE BOOL "Require C standard for PS3 build" FORCE)
+	set(CMAKE_CXX_STANDARD 17 CACHE STRING "C++ standard for PS3 build" FORCE)
+	set(CMAKE_CXX_STANDARD_REQUIRED ON CACHE BOOL "Require C++ standard for PS3 build" FORCE)
+	set(CMAKE_CXX_EXTENSIONS OFF CACHE BOOL "Disable compiler-specific C++ extensions for PS3 build" FORCE)
+	set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=gnu++17")
+	add_compile_definitions(PS3_BUILD)
+endif()
+
 project(smw
 	VERSION 2.0.0
 	DESCRIPTION "A fan-made multiplayer Super Mario Bros. style deathmatch game"
@@ -19,6 +37,10 @@ project(smw
 
 option(USE_PNG_SAVE "Use PNG for screenshots and thumbnails" ON)
 option(NO_NETWORK "Disable all network communication" OFF)
+if(PS3_BUILD)
+	set(NO_NETWORK ON CACHE BOOL "Disable all network communication" FORCE)
+	message(STATUS "PS3 build: disabling all network communication")
+endif()
 option(SDL2_FORCE_GLES "(SDL2) Use OpenGL ES rendering if possible" OFF)
 option(BUILD_TESTS "Build the unit tests" ON)
 
@@ -40,6 +62,26 @@ endif()
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
 
 include(SmwGitInfo)
+
+if(PS3_BUILD)
+	find_program(PS3_SDL2_CONFIG_EXECUTABLE NAMES ${PS3_SDL2_CONFIG})
+	if(NOT PS3_SDL2_CONFIG_EXECUTABLE)
+		message(FATAL_ERROR "PS3 build requested but ${PS3_SDL2_CONFIG} was not found in PATH")
+	endif()
+
+	execute_process(COMMAND "${PS3_SDL2_CONFIG_EXECUTABLE}" --cflags
+		OUTPUT_VARIABLE PS3_SDL2_CFLAGS
+		OUTPUT_STRIP_TRAILING_WHITESPACE)
+	execute_process(COMMAND "${PS3_SDL2_CONFIG_EXECUTABLE}" --libs
+		OUTPUT_VARIABLE PS3_SDL2_LDFLAGS
+		OUTPUT_STRIP_TRAILING_WHITESPACE)
+
+	string(REPLACE " " ";" PS3_SDL2_CFLAGS_LIST "${PS3_SDL2_CFLAGS}")
+	string(REPLACE " " ";" PS3_SDL2_LDFLAGS_LIST "${PS3_SDL2_EXTRA_LIBS} ${PS3_SDL2_LDFLAGS}")
+
+	message(STATUS "PS3 SDL2 cflags: ${PS3_SDL2_CFLAGS_LIST}")
+	message(STATUS "PS3 SDL2 ldflags: ${PS3_SDL2_LDFLAGS_LIST}")
+endif()
 
 #-----------------------------------------------------------------------------
 #
@@ -210,6 +252,89 @@ if(CMAKE_PROJECT_NAME STREQUAL PROJECT_NAME AND BUILD_TESTS)
 	include(dependencies/doctest/doctest.cmake)
 	add_subdirectory(dependencies/doctest)
 	add_subdirectory(tests)
+endif()
+
+if(PS3_BUILD)
+	set(PS3_EBOOT_CONTENT_ID "UP0001-SMW00PS33_00-0000000000000000" CACHE STRING "PS3 NPDRM content ID for EBOOT.BIN packaging")
+	set(PS3_EBOOT_APPID "SMW00PS33" CACHE STRING "PS3 package application ID")
+	set(PS3_EBOOT_TITLE "Super Mario War" CACHE STRING "PS3 package title")
+	set(PS3_SFO_XML "${CMAKE_SOURCE_DIR}/sfo.xml" CACHE FILEPATH "PS3 SFO XML template file")
+
+	find_program(PS3_EBOOT_TOOL NAMES make_self_npdrm
+		PATHS /usr/local/ps3dev/bin /usr/local/ps3dev/ppu/bin
+		ENV PS3DEV
+	)
+	set(PS3_EBOOT_OUTPUT "${CMAKE_BINARY_DIR}/EBOOT.BIN")
+
+	if(PS3_EBOOT_TOOL)
+		add_custom_command(
+			OUTPUT "${PS3_EBOOT_OUTPUT}"
+			COMMAND "${PS3_EBOOT_TOOL}" "$<TARGET_FILE:smw>" "${PS3_EBOOT_OUTPUT}" "${PS3_EBOOT_CONTENT_ID}"
+			DEPENDS smw
+			WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+			COMMENT "Generating PS3 EBOOT.BIN from smw"
+		)
+		add_custom_target(ps3_eboot DEPENDS "${PS3_EBOOT_OUTPUT}")
+	else()
+		add_custom_target(ps3_eboot
+			COMMAND "${CMAKE_COMMAND}" -E echo "PS3 EBOOT tool not found. Install make_self_npdrm to build EBOOT.BIN."
+			COMMAND "${CMAKE_COMMAND}" -E false
+			COMMENT "PS3 EBOOT.BIN target requires make_self_npdrm"
+		)
+	endif()
+
+	find_program(PS3_PKG_TOOL NAMES pkg.py
+		PATHS /usr/local/ps3dev/bin /usr/local/ps3dev/ppu/bin
+		ENV PS3DEV
+	)
+	find_program(PS3_SFO_TOOL NAMES sfo.py
+		PATHS /usr/local/ps3dev/bin /usr/local/ps3dev/ppu/bin
+		ENV PS3DEV
+	)
+	find_program(PS3_PACKAGE_FINALIZE NAMES package_finalize
+		PATHS /usr/local/ps3dev/bin /usr/local/ps3dev/ppu/bin
+		ENV PS3DEV
+	)
+
+	if(NOT PS3_PKG_TOOL)
+		message(FATAL_ERROR "PS3 package generation requires pkg.py on PATH")
+	endif()
+	if(NOT PS3_SFO_TOOL)
+		message(FATAL_ERROR "PS3 package generation requires sfo.py on PATH")
+	endif()
+
+	set(PS3_PKG_STAGING_DIR "${CMAKE_BINARY_DIR}/ps3_pkgfiles")
+
+	if(PS3_PACKAGE_FINALIZE)
+		set(PS3_PKG_OUTPUT "${CMAKE_BINARY_DIR}/${PS3_EBOOT_APPID}.gnpdrm.pkg" CACHE FILEPATH "PS3 package output file")
+		set(PS3_PKG_RAW_OUTPUT "${CMAKE_BINARY_DIR}/${PS3_EBOOT_APPID}.pkg")
+	else()
+		set(PS3_PKG_OUTPUT "${CMAKE_BINARY_DIR}/${PS3_EBOOT_APPID}.pkg" CACHE FILEPATH "PS3 package output file")
+		set(PS3_PKG_RAW_OUTPUT "${PS3_PKG_OUTPUT}")
+	endif()
+
+	add_custom_command(
+		OUTPUT "${PS3_PKG_OUTPUT}"
+		COMMAND "${CMAKE_COMMAND}" -E remove_directory "${PS3_PKG_STAGING_DIR}"
+		COMMAND "${CMAKE_COMMAND}" -E make_directory "${PS3_PKG_STAGING_DIR}"
+		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/pkgfiles" "${PS3_PKG_STAGING_DIR}"
+		COMMAND "${CMAKE_COMMAND}" -E copy_directory "${CMAKE_SOURCE_DIR}/data" "${PS3_PKG_STAGING_DIR}/USRDIR/data"
+		COMMAND "${CMAKE_COMMAND}" -E copy "${PS3_EBOOT_OUTPUT}" "${PS3_PKG_STAGING_DIR}/USRDIR/EBOOT.BIN"
+		COMMAND "${PS3_SFO_TOOL}" --fromxml "${PS3_SFO_XML}" "${PS3_PKG_STAGING_DIR}/PARAM.SFO"
+		COMMAND "${PS3_PKG_TOOL}" -c "${PS3_EBOOT_CONTENT_ID}" "${PS3_PKG_STAGING_DIR}/" "${PS3_PKG_RAW_OUTPUT}"
+		COMMAND "${CMAKE_COMMAND}" -E copy "${PS3_PKG_RAW_OUTPUT}" "${PS3_PKG_OUTPUT}"
+		DEPENDS ps3_eboot "${PS3_SFO_XML}"
+		WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+		COMMENT "Building PS3 package ${PS3_PKG_OUTPUT}"
+	)
+
+	add_custom_target(ps3_pkg DEPENDS "${PS3_PKG_OUTPUT}")
+
+	if(PS3_PACKAGE_FINALIZE)
+		add_custom_command(TARGET ps3_pkg POST_BUILD
+			COMMAND "${PS3_PACKAGE_FINALIZE}" "${PS3_PKG_OUTPUT}"
+		)
+	endif()
 endif()
 
 #-----------------------------------------------------------------------------

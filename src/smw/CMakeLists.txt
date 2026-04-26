@@ -62,7 +62,12 @@ endif()
 # Dependencies
 #
 
-target_link_libraries(smw CommonFiles)
+if (PS3_BUILD)
+	target_link_libraries(smw "-Wl,--whole-archive" CommonFiles "-Wl,--no-whole-archive")
+else()
+	target_link_libraries(smw CommonFiles)
+endif()
+
 if(NOT NO_NETWORK)
 	target_link_libraries(smw NetplayFiles)
 endif()
@@ -73,7 +78,7 @@ endif()
 
 target_link_libraries(smw yaml-cpp::yaml-cpp)
 
-if (TARGET SDL2::SDL2main)
+if (NOT PS3_BUILD AND TARGET SDL2::SDL2main)
     target_link_libraries(smw SDL2::SDL2main)
 endif()
 

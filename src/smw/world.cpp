@@ -54,6 +54,17 @@ int popNextInt(std::list<std::string_view>& list, int defval = 0)
 {
     return toInt(popNext(list));
 }
+
+static int parseWorldInt(const std::string& line)
+{
+#ifdef PS3_BUILD
+    int value = 0;
+    std::from_chars(line.data(), line.data() + line.size(), value);
+    return value;
+#else
+    return std::stoi(line);
+#endif
+}
 } // namespace
 
 
@@ -405,13 +416,13 @@ WorldMap::WorldMap(const std::string& path, short tilesize)
             version.build = popNextInt(tokens);
             iReadType = 1;
         } else if (iReadType == 1) { //music category
-            iMusicCategory = static_cast<WorldMusicCategory>(std::stoi(line));  // FIXME
+            iMusicCategory = static_cast<WorldMusicCategory>(parseWorldInt(line));
             iReadType = 2;
         } else if (iReadType == 2) { //world width
-            iWidth = std::stoi(line);
+            iWidth = parseWorldInt(line);
             iReadType = 3;
         } else if (iReadType == 3) { //world height
-            iHeight = std::stoi(line);
+            iHeight = parseWorldInt(line);
             iReadType = 4;
 
             tiles = decltype(tiles)(iWidth, iHeight);
@@ -545,7 +556,7 @@ WorldMap::WorldMap(const std::string& path, short tilesize)
             if (++iMapTileReadRow == iHeight)
                 iReadType = 10;
         } else if (iReadType == 10) { //number of stages
-            iNumStages = std::stoi(line);
+            iNumStages = parseWorldInt(line);
 
             iReadType = iNumStages == 0 ? 12 : 11;
         } else if (iReadType == 11) { //stage details
@@ -572,7 +583,7 @@ WorldMap::WorldMap(const std::string& path, short tilesize)
                 iReadType = 12;
             }
         } else if (iReadType == 12) { //number of warps
-            iNumWarps = std::stoi(line);
+            iNumWarps = parseWorldInt(line);
 
             if (iNumWarps < 0)
                 iNumWarps = 0;
@@ -598,7 +609,7 @@ WorldMap::WorldMap(const std::string& path, short tilesize)
             if (warps.size() >= iNumWarps)
                 iReadType = 14;
         } else if (iReadType == 14) { //number of vehicles
-            iNumVehicles = std::stoi(line);
+            iNumVehicles = parseWorldInt(line);
 
             if (iNumVehicles < 0)
                 iNumVehicles = 0;
