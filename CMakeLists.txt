@@ -258,7 +258,7 @@ if(PS3_BUILD)
 	set(PS3_EBOOT_CONTENT_ID "UP0001-SMW00PS33_00-0000000000000000" CACHE STRING "PS3 NPDRM content ID for EBOOT.BIN packaging")
 	set(PS3_EBOOT_APPID "SMW00PS33" CACHE STRING "PS3 package application ID")
 	set(PS3_EBOOT_TITLE "Super Mario War" CACHE STRING "PS3 package title")
-	set(PS3_SFO_XML "${CMAKE_SOURCE_DIR}/sfo.xml" CACHE FILEPATH "PS3 SFO XML template file")
+	set(PS3_SFO_XML "${CMAKE_SOURCE_DIR}/pkgfiles/sfo.xml" CACHE FILEPATH "PS3 SFO XML template file")
 
 	find_program(PS3_EBOOT_TOOL NAMES make_self_npdrm
 		PATHS /usr/local/ps3dev/bin /usr/local/ps3dev/ppu/bin
